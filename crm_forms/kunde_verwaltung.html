@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>keepITlocal CRM - Kundenverwaltung</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 0;
+        }
+        
+        .sidebar {
+            background: #f8f9fa;
+            padding: 30px;
+            border-right: 1px solid #dee2e6;
+        }
+        
+        .sidebar h2 {
+            margin-bottom: 20px;
+            color: #667eea;
+        }
+        
+        .sidebar button {
+            width: 100%;
+            padding: 15px;
+            margin-bottom: 10px;
+            border: none;
+            border-radius: 10px;
+            background: white;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+            text-align: left;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar button:hover {
+            background: #667eea;
+            color: white;
+            transform: translateX(5px);
+        }
+        
+        .sidebar button.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .form-area {
+            padding: 30px;
+        }
+        
+        .form-section {
+            display: none;
+        }
+        
+        .form-section.active {
+            display: block;
+        }
+        
+        .form-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-grid.full-width {
+            grid-template-columns: 1fr;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .customer-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .customer-table th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #495057;
+            border-bottom: 2px solid #dee2e6;
+        }
+        
+        .customer-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .customer-table tr:hover {
+            background: #f8f9fa;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        
+        .badge-lead { background: #ffc107; color: #000; }
+        .badge-interessent { background: #17a2b8; color: white; }
+        .badge-aktiv { background: #28a745; color: white; }
+        .badge-inaktiv { background: #6c757d; color: white; }
+        
+        .priority-hoch { color: #dc3545; font-weight: bold; }
+        .priority-mittel { color: #ffc107; }
+        .priority-niedrig { color: #28a745; }
+        
+        #message {
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        #message.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        #message.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 keepITlocal CRM</h1>
+            <p>Lokale KI-Lösungen für den deutschen Mittelstand</p>
+        </div>
+        
+        <div class="main-content">
+            <div class="sidebar">
+                <h2>Navigation</h2>
+                <button class="nav-btn active" data-section="list">📋 Kundenliste</button>
+                <button class="nav-btn" data-section="add">➕ Kunde hinzufügen</button>
+                <button class="nav-btn" data-section="stats">📊 Statistiken</button>
+            </div>
+            
+            <div class="form-area">
+                <div id="message"></div>
+                
+                <!-- Kundenliste -->
+                <div class="form-section active" id="section-list">
+                    <h2>Kundenliste</h2>
+                    <div style="margin-bottom: 20px;">
+                        <input type="text" id="searchInput" placeholder="🔍 Suche nach Firma, Name, Email..." 
+                               style="width: 100%; padding: 12px; border: 2px solid #dee2e6; border-radius: 8px;">
+                    </div>
+                    <table class="customer-table" id="customerTable">
+                        <thead>
+                            <tr>
+                                <th>Firma</th>
+                                <th>Ansprechpartner</th>
+                                <th>Email</th>
+                                <th>Telefon</th>
+                                <th>Status</th>
+                                <th>Priorität</th>
+                                <th>Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="customerList">
+                            <tr>
+                                <td colspan="7" style="text-align: center; padding: 30px;">
+                                    Lade Kundendaten...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Kunde hinzufügen -->
+                <div class="form-section" id="section-add">
+                    <h2>Neuen Kunden anlegen</h2>
+                    <form id="customerForm">
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="firma_name">Firmenname *</label>
+                                <input type="text" id="firma_name" name="firma_name" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="firma_typ">Firmentyp</label>
+                                <select id="firma_typ" name="firma_typ">
+                                    <option value="">Bitte wählen</option>
+                                    <option value="GmbH">GmbH</option>
+                                    <option value="UG">UG (haftungsbeschränkt)</option>
+                                    <option value="AG">AG</option>
+                                    <option value="Einzelunternehmen">Einzelunternehmen</option>
+                                    <option value="Freiberufler">Freiberufler</option>
+                                    <option value="Verein">Verein</option>
+                                    <option value="Sonstiges">Sonstiges</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="ansprechpartner_name">Ansprechpartner</label>
+                                <input type="text" id="ansprechpartner_name" name="ansprechpartner_name">
+                            </div>
+                            <div class="form-group">
+                                <label for="ansprechpartner_position">Position</label>
+                                <input type="text" id="ansprechpartner_position" name="ansprechpartner_position">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="email">Email *</label>
+                                <input type="email" id="email" name="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="telefon">Telefon</label>
+                                <input type="tel" id="telefon" name="telefon">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="branche">Branche</label>
+                                <input type="text" id="branche" name="branche" placeholder="z.B. Handwerk, IT, Medizin">
+                            </div>
+                            <div class="form-group">
+                                <label for="mitarbeiter_anzahl">Mitarbeiteranzahl</label>
+                                <input type="number" id="mitarbeiter_anzahl" name="mitarbeiter_anzahl">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="website">Website</label>
+                                <input type="url" id="website" name="website" placeholder="https://">
+                            </div>
+                            <div class="form-group">
+                                <label for="quelle">Quelle (Wie gefunden?)</label>
+                                <input type="text" id="quelle" name="quelle" placeholder="z.B. Website, Empfehlung, Messe">
+                            </div>
+                        </div>
+                        
+                        <h3 style="margin: 20px 0 10px; color: #667eea;">Adresse</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="strasse">Straße & Hausnummer</label>
+                                <input type="text" id="strasse" name="strasse">
+                            </div>
+                            <div class="form-group">
+                                <label for="plz">PLZ</label>
+                                <input type="text" id="plz" name="plz">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="ort">Ort</label>
+                                <input type="text" id="ort" name="ort">
+                            </div>
+                            <div class="form-group">
+                                <label for="bundesland">Bundesland</label>
+                                <select id="bundesland" name="bundesland">
+                                    <option value="">Bitte wählen</option>
+                                    <option value="Baden-Württemberg">Baden-Württemberg</option>
+                                    <option value="Bayern">Bayern</option>
+                                    <option value="Berlin">Berlin</option>
+                                    <option value="Brandenburg">Brandenburg</option>
+                                    <option value="Bremen">Bremen</option>
+                                    <option value="Hamburg">Hamburg</option>
+                                    <option value="Hessen">Hessen</option>
+                                    <option value="Mecklenburg-Vorpommern">Mecklenburg-Vorpommern</option>
+                                    <option value="Niedersachsen">Niedersachsen</option>
+                                    <option value="Nordrhein-Westfalen">Nordrhein-Westfalen</option>
+                                    <option value="Rheinland-Pfalz">Rheinland-Pfalz</option>
+                                    <option value="Saarland">Saarland</option>
+                                    <option value="Sachsen">Sachsen</option>
+                                    <option value="Sachsen-Anhalt">Sachsen-Anhalt</option>
+                                    <option value="Schleswig-Holstein">Schleswig-Holstein</option>
+                                    <option value="Thüringen">Thüringen</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <h3 style="margin: 20px 0 10px; color: #667eea;">Klassifizierung</h3>
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="kunde_status">Status</label>
+                                <select id="kunde_status" name="kunde_status">
+                                    <option value="lead">Lead</option>
+                                    <option value="interessent">Interessent</option>
+                                    <option value="aktiv">Aktiv</option>
+                                    <option value="inaktiv">Inaktiv</option>
+                                    <option value="verloren">Verloren</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="prioritaet">Priorität</label>
+                                <select id="prioritaet" name="prioritaet">
+                                    <option value="niedrig">Niedrig</option>
+                                    <option value="mittel" selected>Mittel</option>
+                                    <option value="hoch">Hoch</option>
+                                    <option value="kritisch">Kritisch</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid">
+                            <div class="form-group">
+                                <label for="potential_bewertung">Potential (1-10)</label>
+                                <input type="number" id="potential_bewertung" name="potential_bewertung" min="1" max="10" value="5">
+                            </div>
+                            <div class="form-group">
+                                <label for="zugeordnet_an">Zugeordnet an</label>
+                                <input type="text" id="zugeordnet_an" name="zugeordnet_an" value="Matthias">
+                            </div>
+                        </div>
+                        
+                        <div class="form-grid full-width">
+                            <div class="form-group">
+                                <label for="notizen">Notizen</label>
+                                <textarea id="notizen" name="notizen" placeholder="Interne Notizen, Besonderheiten, etc."></textarea>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 30px;">
+                            <button type="submit" class="btn btn-primary">💾 Kunde speichern</button>
+                            <button type="reset" class="btn btn-secondary">🔄 Zurücksetzen</button>
+                        </div>
+                    </form>
+                </div>
+                
+                <!-- Statistiken -->
+                <div class="form-section" id="section-stats">
+                    <h2>Statistiken</h2>
+                    <div id="statsContent">
+                        <p style="text-align: center; padding: 50px; color: #6c757d;">
+                            Statistiken werden nach dem Anlegen der ersten Kunden angezeigt.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // API Endpoint (n8n webhook oder direkter PostgreSQL REST API)
+        const API_BASE = 'http://localhost:5678/webhook/crm';  // n8n webhook
+        
+        // Navigation
+        document.querySelectorAll('.nav-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                
+                const section = btn.dataset.section;
+                document.querySelectorAll('.form-section').forEach(s => s.classList.remove('active'));
+                document.getElementById(`section-${section}`).classList.add('active');
+                
+                if (section === 'list') {
+                    loadCustomers();
+                } else if (section === 'stats') {
+                    loadStats();
+                }
+            });
+        });
+        
+        // Formular absenden
+        document.getElementById('customerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+            
+            try {
+                const response = await fetch(`${API_BASE}/customer/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                if (response.ok) {
+                    showMessage('✅ Kunde erfolgreich angelegt!', 'success');
+                    e.target.reset();
+                    loadCustomers();
+                } else {
+                    const error = await response.json();
+                    showMessage(`❌ Fehler: ${error.message}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`❌ Fehler: ${error.message}`, 'error');
+            }
+        });
+        
+        // Kunden laden
+        async function loadCustomers() {
+            try {
+                const response = await fetch(`${API_BASE}/customers`);
+                const customers = await response.json();
+                
+                const tbody = document.getElementById('customerList');
+                
+                if (customers.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 30px;">Noch keine Kunden angelegt</td></tr>';
+                    return;
+                }
+                
+                tbody.innerHTML = customers.map(c => `
+                    <tr>
+                        <td><strong>${c.firma_name}</strong></td>
+                        <td>${c.ansprechpartner_name || '-'}</td>
+                        <td><a href="mailto:${c.email}">${c.email}</a></td>
+                        <td>${c.telefon || '-'}</td>
+                        <td><span class="badge badge-${c.kunde_status}">${c.kunde_status}</span></td>
+                        <td><span class="priority-${c.prioritaet}">${c.prioritaet}</span></td>
+                        <td>
+                            <button onclick="editCustomer(${c.id})" style="padding: 5px 10px; cursor: pointer;">✏️</button>
+                            <button onclick="viewCustomer(${c.id})" style="padding: 5px 10px; cursor: pointer;">👁️</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                document.getElementById('customerList').innerHTML = 
+                    `<tr><td colspan="7" style="text-align: center; padding: 30px; color: #dc3545;">
+                        ⚠️ Fehler beim Laden der Kundendaten. Ist n8n webhook aktiv?
+                    </td></tr>`;
+            }
+        }
+        
+        // Statistiken laden
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const stats = await response.json();
+                
+                document.getElementById('statsContent').innerHTML = `
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h3 style="color: #667eea; font-size: 2.5em; margin-bottom: 10px;">${stats.total_customers || 0}</h3>
+                            <p>Gesamt Kunden</p>
+                        </div>
+                        <div style="background: #d4edda; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h3 style="color: #28a745; font-size: 2.5em; margin-bottom: 10px;">${stats.active_customers || 0}</h3>
+                            <p>Aktive Kunden</p>
+                        </div>
+                        <div style="background: #fff3cd; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h3 style="color: #ffc107; font-size: 2.5em; margin-bottom: 10px;">${stats.leads || 0}</h3>
+                            <p>Offene Leads</p>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                document.getElementById('statsContent').innerHTML = 
+                    '<p style="text-align: center; padding: 50px; color: #dc3545;">Fehler beim Laden der Statistiken</p>';
+            }
+        }
+        
+        // Nachricht anzeigen
+        function showMessage(text, type) {
+            const msg = document.getElementById('message');
+            msg.textContent = text;
+            msg.className = type;
+            msg.style.display = 'block';
+            
+            setTimeout(() => {
+                msg.style.display = 'none';
+            }, 5000);
+        }
+        
+        // Suche
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const search = e.target.value.toLowerCase();
+            document.querySelectorAll('#customerList tr').forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(search) ? '' : 'none';
+            });
+        });
+        
+        // Initial load
+        loadCustomers();
+    </script>
+</body>
+</html>

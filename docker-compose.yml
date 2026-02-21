@@ -1,0 +1,305 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secret}
+      POSTGRES_DB: ${POSTGRES_DB:-mydb}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB} -h localhost || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE:-true}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=db
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB:-mydb}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - N8N_EDITOR_BASE_URL=${N8N_EDITOR_BASE_URL:-http://localhost:5678/}
+      - VUE_APP_URL_BASE_PATH=/
+    ports:
+      - "127.0.0.1:5678:5678"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - db
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      # Use node (available in n8n image) to perform an HTTP probe instead of curl
+      test: ["CMD-SHELL", "node -e \"const http=require('http');const req=http.get('http://127.0.0.1:5678/', res=>process.exit(res.statusCode<400?0:1)); req.on('error',()=>process.exit(1));\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+    ports:
+      - "127.0.0.1:8085:80"
+    depends_on:
+      - db
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      # Use python3 (present in pgAdmin image) to probe the web UI instead of curl
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:80/'); sys.exit(0 if r.getcode()==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  metabase:
+    image: metabase/metabase:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    env_file:
+      - .env
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: ${POSTGRES_DB:-mydb}
+      MB_DB_PORT: 5432
+      MB_DB_USER: ${POSTGRES_USER}
+      MB_DB_PASS: ${POSTGRES_PASSWORD}
+      MB_DB_HOST: db
+    depends_on:
+      - db
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      # use python3 (present in many images) — fallback if curl isn't available
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:3000/api/health'); sys.exit(0 if r.getcode()==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  proxy:
+    image: nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    depends_on:
+      - n8n
+    networks:
+      - frontend
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:80/'); sys.exit(0 if r.getcode()==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # Text-Generation-Inference (TGI) service for Mistral models
+  # NOTE: TGI has hard GPU dependencies (mamba_ssm/triton) that fail on CPU-only hosts.
+  # Use Ollama (below) for CPU inference instead. Keep TGI config for future GPU hosts.
+  tgi:
+    image: ghcr.io/huggingface/text-generation-inference:latest
+    restart: "no"  # Ensure TGI service remains disabled for CPU-only hosts
+    environment:
+      - TGI_MODEL_ID=${TGI_MODEL_ID:-mistralai/mistral-small}
+      - TGI_SERVER_THREADS=${TGI_SERVER_THREADS:-2}
+    command:
+      - --disable-custom-kernels
+    volumes:
+      - tgi_cache:/data
+    networks:
+      - frontend
+    profiles:
+      - gpu  # only start if 'gpu' profile is active
+
+  # Ollama: CPU-friendly LLM inference using quantized GGUF models
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      - OLLAMA_MODEL=mistral:7b-instruct-q4_0  # Use quantized model for CPU
+    ports:
+      - "127.0.0.1:11434:11434"  # Bind Ollama to localhost
+    volumes:
+      - ollama_models:/root/.ollama
+    networks:
+      - frontend
+      - backend
+    # Expose port 11434 internally for llama_wrapper; not published to host by default
+    # To manage models: docker compose exec ollama ollama pull mistral:7b-instruct
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Open-WebUI: ChatGPT-like interface for Ollama
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - WEBUI_AUTH=false
+    volumes:
+      - open_webui_data:/app/backend/data
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - ollama
+
+  embedding_service:
+    build: ./embedding_service
+    restart: unless-stopped
+    environment:
+      - MODEL_NAME=${EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+    # bind to localhost only for testing; remove if you want external access
+    ports:
+      - "127.0.0.1:8082:8082"
+    networks:
+      - backend
+    # resource limits to avoid OOM on modest hosts
+    mem_limit: 16g
+    cpus: 3.0
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8082/health'); sys.exit(0 if r.getcode()==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Nginx Reverse Proxy with Security
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - frontend
+      - backend
+    depends_on:
+      - n8n
+      - metabase
+      - pgadmin
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Traefik (optional, disabled - using nginx instead)
+  # traefik:
+  #   image: traefik:v2.10
+  #   restart: unless-stopped
+  #   command:
+  #     - --providers.docker=true
+  #     - --providers.docker.exposedbydefault=false
+  #     - --entrypoints.web.address=:80
+  #     - --entrypoints.websecure.address=:443
+  #     - --api.insecure=false
+  #     - --log.level=INFO
+  #     - --certificatesresolvers.le.acme.tlschallenge=true
+  #     - --certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL:-matthias.naumann@keepITlocal.ai}
+  #     - --certificatesresolvers.le.acme.storage=/acme.json
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - ./traefik/acme.json:/acme.json
+  #     - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+  #   networks:
+  #     - frontend
+
+
+  # AI wrapper service: exposes a stable internal HTTP endpoint for n8n and proxies to Ollama
+  llama_wrapper:
+    build: ./ai
+    restart: unless-stopped
+    environment:
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      # Legacy TGI_URL for backward compat (not used if OLLAMA_URL is set)
+      - TGI_URL=${TGI_URL:-http://tgi:8080}
+    ports:
+      - "127.0.0.1:8087:8080"
+    networks:
+      - backend
+      - frontend
+    mem_limit: 4g
+    cpus: 2.0
+    volumes:
+      - ./models:/models:ro
+    depends_on:
+      - ollama
+
+  vector_service:
+    build: ./vector_service
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_DB=${POSTGRES_DB:-mydb}
+      - POSTGRES_USER=${POSTGRES_USER:-admin}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secret}
+    ports:
+      - "127.0.0.1:8081:8081"
+    networks:
+      - backend
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:8081/health'); sys.exit(0 if r.getcode()==200 else 1)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  frontend:
+  backend:
+
+volumes:
+  db_data:
+  n8n_data:
+  tgi_cache:
+  ollama_models:
+  open_webui_data:
+  nginx_logs:

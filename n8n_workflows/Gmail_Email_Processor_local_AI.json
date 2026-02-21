@@ -1,0 +1,423 @@
+{
+  "name": "Gmail Email Processor with AI",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "1080a0ca-3919-4747-815b-38757a1e29e5",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [
+        -2096,
+        288
+      ],
+      "credentials": {
+        "imap": {
+          "id": "NqhzcA5zntNxASTR",
+          "name": "GMail IMAP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract email data from Gmail IMAP node\nconst item = $input.item.json;\n\n// Extract sender\nlet senderEmail = 'unknown@unknown.com';\nlet senderName = '';\n\nif (item.from) {\n  // Format: \"Name <email@example.com>\"\n  const match = item.from.match(/(.+?)\\s*<(.+?)>/);\n  if (match) {\n    senderName = match[1].trim();\n    senderEmail = match[2].trim();\n  } else {\n    senderEmail = item.from.trim();\n  }\n}\n\n// Extract email body - Gmail IMAP returns textPlain and textHtml\nlet emailContent = item.textPlain || item.text || '';\n\n// Clean up encoding issues (UTF-8 mojibake)\nemailContent = emailContent\n  .replace(/Ã¼/g, 'ü')\n  .replace(/Ã¶/g, 'ö')\n  .replace(/Ã¤/g, 'ä')\n  .replace(/ÃŸ/g, 'ß')\n  .replace(/Ã\u0084/g, 'Ä')\n  .replace(/Ã\u0096/g, 'Ö')\n  .replace(/Ã\u009c/g, 'Ü');\n\n// Convert date\nlet receivedDate;\ntry {\n  receivedDate = item.date ? new Date(item.date).toISOString() : new Date().toISOString();\n} catch (e) {\n  receivedDate = new Date().toISOString();\n}\n\nreturn {\n  json: {\n    sender_email: senderEmail,\n    sender_name: senderName,\n    subject: item.subject || 'No Subject',\n    email_content: emailContent,\n    received_date: receivedDate,\n    has_attachments: (item.attachments && item.attachments.length > 0) ? 'yes' : 'no',\n    attachment_count: item.attachments?.length || 0\n  }\n};"
+      },
+      "id": "9acea7a2-f97a-4929-b368-861df4fdbc05",
+      "name": "Extract Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1888,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://llama_wrapper:8080/generate",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "Who wrote this email? Return ONLY the full name.\n\nEmail text:\n{{ $json.email_content }}\n\nFull name of sender:"
+            },
+            {
+              "name": "max_tokens",
+              "value": "500"
+            },
+            {
+              "name": "model",
+              "value": "mistral:7b-instruct-q4_0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "4c871e32-5eb4-4964-b59c-cd815ab2d117",
+      "name": "AI Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -1696,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Simple plain-text extraction - no JSON parsing needed\nconst aiResponse = $input.item.json.generated_text || '';\nconst emailData = $('Extract Email Data').item.json;\n\n// Clean up AI response - just get the text answer (first line only)\nlet extractedName = aiResponse.trim().split('\\n')[0].trim();\n\n// Remove common AI chatter phrases\nextractedName = extractedName.replace(/^(Here is|The sender|The name is|Answer:|Name:)\\s*/gi, '').trim();\n\n// If AI returned garbage, too long, or apologizes, use email sender name\nif (!extractedName || extractedName.length > 100 || extractedName.toLowerCase().includes('apologize') || extractedName.toLowerCase().includes('email') || extractedName.toLowerCase().includes('signature') || extractedName.toLowerCase().includes('cannot')) {\n  extractedName = emailData.sender_name;\n}\n\n// Simple rule-based classification\nconst subject = (emailData.subject || '').toLowerCase();\nconst content = (emailData.email_content || '').toLowerCase();\n\nlet email_type = 'info';\nlet priority = 'low';\nlet action_required = 'no';\n\n// Classify email type based on keywords (use English for database constraints)\nif (subject.includes('rechnung') || subject.includes('invoice') || content.includes('rechnung')) {\n  email_type = 'invoice';\n  priority = 'medium';\n  action_required = 'yes';\n} else if (subject.includes('bestellung') || subject.includes('order') || content.includes('bestellen')) {\n  email_type = 'order';\n  priority = 'medium';\n  action_required = 'yes';\n} else if (subject.includes('anfrage') || subject.includes('request') || subject.includes('frage') || subject.includes('kollaboration') || content.includes('zusammenarbeit') || content.includes('termin')) {\n  email_type = 'request';\n  priority = 'medium';\n  action_required = 'yes';\n} else if (subject.includes('support') || subject.includes('hilfe') || subject.includes('problem')) {\n  email_type = 'support_request';\n  priority = 'high';\n  action_required = 'yes';\n}\n\n// Extract phone number with regex\nconst phoneMatch = emailData.email_content.match(/\\+?[0-9]{1,4}[\\s.-]?[(]?[0-9]{1,4}[)]?[\\s.-]?[0-9]{3,}[\\s.-]?[0-9]{3,}/g);\nconst phone_number = phoneMatch ? phoneMatch[0] : null;\n\n// Extract meeting times (German and English day names)\nconst meetingMatch = emailData.email_content.match(/(Montag|Dienstag|Mittwoch|Donnerstag|Freitag|Samstag|Sonntag|Monday|Tuesday|Wednesday|Thursday|Friday)[^\\n]*\\d{1,2}:\\d{2}[^\\n]*/gi);\nconst additional_info = meetingMatch ? 'Terminvorschläge: ' + meetingMatch.join(', ') : null;\n\n// Create simple summary from first 2 sentences of email\nlet summary = 'Keine Zusammenfassung';\nconst sentences = emailData.email_content.split(/[.!?]\\n/).filter(s => s.trim().length > 20);\nif (sentences.length > 0) {\n  summary = sentences.slice(0, 2).join('. ').substring(0, 200).trim();\n  if (!summary.endsWith('.')) summary += '.';\n}\n\n// Build result with ONLY database columns (no extra fields)\nconst result = {\n  sender_name: extractedName,\n  sender_email: emailData.sender_email,\n  email_type: email_type,\n  topic: (emailData.subject || 'Kein Thema').substring(0, 50),\n  summary: summary,\n  date_deadline: null,\n  cost_amount: null,\n  phone_number: phone_number,\n  priority: priority,\n  action_required: action_required,\n  additional_info: additional_info,\n  original_email: emailData.email_content,\n  received_at: emailData.received_date,\n  processed_by: 'mistral-7b-simple'\n};\n\nreturn { json: result };"
+      },
+      "id": "adab084c-0fb7-46f3-aa58-84381ed94455",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1488,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "email_classifications",
+          "mode": "list",
+          "cachedResultName": "email_classifications"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sender_name": "={{ $json.sender_name }}",
+            "sender_email": "={{ $json.sender_email }}",
+            "email_type": "={{ $json.email_type }}",
+            "topic": "={{ $json.topic }}",
+            "summary": "={{ $json.summary }}",
+            "date_deadline": "={{ $json.date_deadline }}",
+            "cost_amount": "={{ $json.cost_amount }}",
+            "phone_number": "={{ $json.phone_number }}",
+            "priority": "={{ $json.priority }}",
+            "action_required": "={{ $json.action_required }}",
+            "additional_info": "={{ $json.additional_info }}",
+            "original_email": "={{ $json.original_email }}",
+            "received_at": "={{ $json.received_at }}",
+            "processed_by": "={{ $json.processed_by }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sender_name",
+              "displayName": "sender_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sender_email",
+              "displayName": "sender_email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email_type",
+              "displayName": "email_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "topic",
+              "displayName": "topic",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "date_deadline",
+              "displayName": "date_deadline",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "cost_amount",
+              "displayName": "cost_amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone_number",
+              "displayName": "phone_number",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "priority",
+              "displayName": "priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action_required",
+              "displayName": "action_required",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "additional_info",
+              "displayName": "additional_info",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "original_email",
+              "displayName": "original_email",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "received_at",
+              "displayName": "received_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed_by",
+              "displayName": "processed_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "updated_at",
+              "displayName": "updated_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "outputColumns": [
+            "id"
+          ]
+        }
+      },
+      "id": "53274517-f2bf-4cdd-a3b6-3542c3da07eb",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        -1296,
+        288
+      ],
+      "retryOnFail": true,
+      "credentials": {
+        "postgres": {
+          "id": "KItJuFdQu3hCAevL",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.action_required }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bb4fbebe-62e5-4314-b64a-61ab5b890ec8",
+      "name": "High Priority?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -896,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "content": "=🚨 **High Priority Email Detected**\n\n**From:** {{ $('Parse AI Response').item.json.sender_name }} ({{ $('Parse AI Response').item.json.sender_email }})\n**Subject:** {{ $('Parse AI Response').item.json.subject }}\n**Type:** {{ $('Parse AI Response').item.json.email_type }}\n**Topic:** {{ $('Parse AI Response').item.json.topic }}\n\n**Summary:**\n{{ $('Parse AI Response').item.json.summary }}\n\n{{ $('Parse AI Response').item.json.date_deadline ? '⏰ **Deadline:** ' + $('Parse AI Response').item.json.date_deadline : '' }}\n{{ $('Parse AI Response').item.json.cost_amount ? '💰 **Amount:** ' + $('Parse AI Response').item.json.cost_amount + ' ' + ($('Parse AI Response').item.json.currency || '') : '' }}\n{{ $('Parse AI Response').item.json.phone_number ? '📞 **Phone:** ' + $('Parse AI Response').item.json.phone_number : '' }}\n\n**Database ID:** {{ $('Save to Database').item.json.id }}\n**Processed:** {{ $('Parse AI Response').item.json.processed_at }}"
+      },
+      "id": "07f6c37a-088c-4c0b-bae0-324cd846e632",
+      "name": "Log High Priority",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        160
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Data": {
+      "main": [
+        [
+          {
+            "node": "AI Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classification": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "High Priority?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "4bbd13cd-6b54-46ec-9bcf-4c9b8eb8b248",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d1ec173db3e1de0255fe46793575dacd32d2dcad2b310a7db81c95558a8ec080"
+  },
+  "id": "0BUJHj2p0h1KWD62",
+  "tags": []
+}

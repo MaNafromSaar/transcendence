@@ -1,0 +1,21 @@
+# Minimal traefik static/dynamic configuration file used alongside docker provider
+log:
+  level: INFO
+
+entryPoints:
+  web:
+    address: :80
+  websecure:
+    address: :443
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+
+certificatesResolvers:
+  le:
+    acme:
+      email: matthias.naumann@keepITlocal.ai
+      storage: /acme.json
+      tlsChallenge: {}

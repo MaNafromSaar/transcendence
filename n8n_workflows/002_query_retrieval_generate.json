@@ -1,0 +1,40 @@
+{
+  "name": "Query -> Retrieve -> Generate",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "query"
+      },
+      "name": "HTTP Trigger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://vector_service:8081/search",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\"embedding\": $json[\"embedding\"], \"k\": 5}"
+      },
+      "name": "Vector Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://llama_wrapper:8080/generate",
+        "method": "POST",
+        "jsonParameters": true,
+        "bodyParametersJson": "={\"prompt\": $json[\"prompt\"] + '\\n\nCONTEXT:\\n' + $json[\"results\"] | json, \"max_tokens\": 256}"
+      },
+      "name": "Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {}
+}

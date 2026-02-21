@@ -1,0 +1,317 @@
+{
+  "name": "Gmail Email Processor with AI",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "postProcessAction": "markAsRead",
+        "options": {}
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "credentials": {
+        "imap": {
+          "id": "2",
+          "name": "Gmail IMAP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract email data from Gmail IMAP node\nconst emailData = $input.item.json;\n\n// Debug: log the raw email structure\nconsole.log('Raw email data:', JSON.stringify(emailData, null, 2));\n\n// Convert email date to ISO format for PostgreSQL\nlet receivedDate;\ntry {\n  receivedDate = emailData.date ? new Date(emailData.date).toISOString() : new Date().toISOString();\n} catch (e) {\n  receivedDate = new Date().toISOString();\n}\n\n// Extract sender info - try multiple possible structures\nlet senderEmail = 'unknown@unknown.com';\nlet senderName = '';\n\nif (emailData.from) {\n  if (typeof emailData.from === 'string') {\n    // Format: \"Name <email@example.com>\" or just \"email@example.com\"\n    const match = emailData.from.match(/(.+?)\\s*<(.+?)>/);\n    if (match) {\n      senderName = match[1].trim();\n      senderEmail = match[2].trim();\n    } else {\n      senderEmail = emailData.from.trim();\n    }\n  } else if (emailData.from.address) {\n    senderEmail = emailData.from.address;\n    senderName = emailData.from.name || '';\n  } else if (emailData.from.value && emailData.from.value[0]) {\n    senderEmail = emailData.from.value[0].address || senderEmail;\n    senderName = emailData.from.value[0].name || '';\n  }\n}\n\n// Extract email body - try multiple content types\nlet emailContent = '';\nif (emailData.text) {\n  emailContent = emailData.text;\n} else if (emailData.textAsHtml) {\n  emailContent = emailData.textAsHtml;\n} else if (emailData.html) {\n  // Strip HTML tags for plain text\n  emailContent = emailData.html.replace(/<[^>]*>/g, ' ').replace(/\\s+/g, ' ').trim();\n} else if (emailData.body) {\n  emailContent = emailData.body;\n}\n\nconsole.log('Extracted - Email:', senderEmail, 'Name:', senderName, 'Content length:', emailContent.length);\n\nreturn {\n  json: {\n    sender_email: senderEmail,\n    sender_name: senderName,\n    subject: emailData.subject || 'No Subject',\n    email_content: emailContent,\n    received_date: receivedDate,\n    has_attachments: (emailData.attachments && emailData.attachments.length > 0) ? 'yes' : 'no',\n    attachment_count: emailData.attachments?.length || 0\n  }\n};"
+      },
+      "id": "extract-email",
+      "name": "Extract Email Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://llama_wrapper:8080/generate",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "Du bist eine KI für E-Mail-Klassifizierung. Extrahiere strukturierte Informationen aus dieser E-Mail.\n\nVON: {{ $json.sender_name }} <{{ $json.sender_email }}>\nBETREFF: {{ $json.subject }}\n\nE-MAIL-INHALT:\n{{ $json.email_content }}\n\nANWEISUNGEN:\n1. Lies die E-Mail sorgfältig durch\n2. Extrahiere den vollständigen Namen des Absenders aus Signatur/Körper falls verfügbar\n3. Identifiziere den E-Mail-Typ (info/bestellung/anfrage/rechnung/support_anfrage/sonstiges)\n4. Extrahiere ALLE Daten, Zeiten, Kosten, Telefonnummern und Terminvereinbarungen\n5. Liste die Fähigkeiten/Erfahrungen des Absenders auf, falls erwähnt\n6. Bewerte Priorität: hoch (dringend/Frist/Kosten), mittel (Antwort erforderlich), niedrig (nur Info)\n7. Bestimme ob Handlung nötig: ja (Antwort/Termin/Zahlung) oder nein (nur Info)\n\nGIB GENAU DIESES JSON zurück (ersetze Werte, verwende null für fehlende Daten, KEIN Markdown):\n{\n  \"sender_name\": \"Vollständiger Name aus Signatur oder '{{ $json.sender_name }}'\",\n  \"email_type\": \"info\",\n  \"topic\": \"Kurzes Thema unter 50 Zeichen\",\n  \"summary\": \"2-3 Sätze Zusammenfassung mit wichtigen Punkten\",\n  \"date_deadline\": null,\n  \"cost_amount\": null,\n  \"currency\": null,\n  \"phone_number\": null,\n  \"priority\": \"mittel\",\n  \"action_required\": \"nein\",\n  \"additional_info\": \"Terminzeiten: ... Fähigkeiten: ... Weitere Details: ...\"\n}\n\nNUR JSON, kein Text davor oder danach."
+            },
+            {
+              "name": "max_tokens",
+              "value": "500"
+            },
+            {
+              "name": "model",
+              "value": "mistral:7b-instruct-q4_0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ai-classify",
+      "name": "AI Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and clean up JSON\nconst aiResponse = $input.item.json.generated_text;\nconst emailData = $('Extract Email Data').item.json;\n\n// Try to extract JSON from response\nlet extractedData;\ntry {\n  // Remove markdown code blocks if present\n  let cleanJson = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  \n  // Try to find JSON object in the response\n  const jsonMatch = cleanJson.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    cleanJson = jsonMatch[0];\n  }\n  \n  extractedData = JSON.parse(cleanJson);\n  \n  // Clean up currency format if present\n  if (extractedData.cost_amount) {\n    // Remove currency symbols and convert to number\n    const costStr = String(extractedData.cost_amount).replace(/[€$£,]/g, '').trim();\n    extractedData.cost_amount = parseFloat(costStr) || null;\n  }\n  \n  // Ensure priority and action_required have valid values\n  if (!extractedData.priority || extractedData.priority.trim() === '') {\n    extractedData.priority = 'medium';\n  }\n  if (!extractedData.action_required || extractedData.action_required.trim() === '') {\n    extractedData.action_required = 'no';\n  }\n  \n} catch (error) {\n  // Fallback if JSON parsing fails\n  extractedData = {\n    sender_name: emailData.sender_name || \"Unknown\",\n    email_type: \"other\",\n    topic: emailData.subject?.substring(0, 50) || \"Parse Error\",\n    summary: aiResponse.substring(0, 200),\n    date_deadline: null,\n    cost_amount: null,\n    currency: null,\n    phone_number: null,\n    priority: \"medium\",\n    action_required: \"no\",\n    additional_info: \"AI response could not be parsed as JSON\",\n    parse_error: true\n  };\n}\n\n// Combine with original email data\nconst result = {\n  ...extractedData,\n  sender_email: emailData.sender_email,\n  subject: emailData.subject,\n  original_email: emailData.email_content,\n  received_at: emailData.received_date,\n  has_attachments: emailData.has_attachments,\n  attachment_count: emailData.attachment_count,\n  processed_by: \"mistral-7b\",\n  processed_at: new Date().toISOString()\n};\n\nreturn { json: result };"
+      },
+      "id": "parse-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "value": "public",
+          "mode": "list",
+          "cachedResultName": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "email_classifications",
+          "mode": "list",
+          "cachedResultName": "email_classifications"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sender_name": "={{ $json.sender_name }}",
+            "sender_email": "={{ $json.sender_email }}",
+            "email_type": "={{ $json.email_type }}",
+            "topic": "={{ $json.topic }}",
+            "summary": "={{ $json.summary }}",
+            "date_deadline": "={{ $json.date_deadline }}",
+            "cost_amount": "={{ $json.cost_amount }}",
+            "phone_number": "={{ $json.phone_number }}",
+            "priority": "={{ $json.priority }}",
+            "action_required": "={{ $json.action_required }}",
+            "additional_info": "={{ $json.additional_info }}",
+            "original_email": "={{ $json.original_email }}",
+            "received_at": "={{ $json.received_at }}",
+            "processed_by": "={{ $json.processed_by }}"
+          }
+        },
+        "options": {
+          "outputColumns": ["id"]
+        }
+      },
+      "id": "insert-db",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1050, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.action_required }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "send-email-summary",
+      "name": "Send Email Summary",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1250, 300],
+      "parameters": {
+        "sendTo": "={{ $('Extract Email Data').item.json.sender_email }}",
+        "subject": "=✅ Email Processed: {{ $('Parse AI Response').item.json.topic }}",
+        "emailType": "html",
+        "message": "<b>Email Classification Complete</b><br><br>From: {{ $('Parse AI Response').item.json.sender_name }} &lt;{{ $('Parse AI Response').item.json.sender_email }}&gt;<br>Type: {{ $('Parse AI Response').item.json.email_type }}<br>Topic: {{ $('Parse AI Response').item.json.topic }}<br>Priority: {{ $('Parse AI Response').item.json.priority }}<br>Action Required: {{ $('Parse AI Response').item.json.action_required }}<br><br><b>Summary:</b> {{ $('Parse AI Response').item.json.summary }}<br><b>Additional Info:</b> {{ $('Parse AI Response').item.json.additional_info }}<br><br>Database ID: {{ $('Save to Database').item.json.id }} | Processed: {{ $('Parse AI Response').item.json.processed_at }}"
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "3",
+          "name": "Gmail OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-1",
+              "leftValue": "={{ $json.priority }}",
+              "rightValue": "high",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "condition-2",
+              "leftValue": "={{ $json.action_required }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-priority",
+      "name": "High Priority?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "content": "=🚨 **High Priority Email Detected**\n\n**From:** {{ $('Parse AI Response').item.json.sender_name }} ({{ $('Parse AI Response').item.json.sender_email }})\n**Subject:** {{ $('Parse AI Response').item.json.subject }}\n**Type:** {{ $('Parse AI Response').item.json.email_type }}\n**Topic:** {{ $('Parse AI Response').item.json.topic }}\n\n**Summary:**\n{{ $('Parse AI Response').item.json.summary }}\n\n{{ $('Parse AI Response').item.json.date_deadline ? '⏰ **Deadline:** ' + $('Parse AI Response').item.json.date_deadline : '' }}\n{{ $('Parse AI Response').item.json.cost_amount ? '💰 **Amount:** ' + $('Parse AI Response').item.json.cost_amount + ' ' + ($('Parse AI Response').item.json.currency || '') : '' }}\n{{ $('Parse AI Response').item.json.phone_number ? '📞 **Phone:** ' + $('Parse AI Response').item.json.phone_number : '' }}\n\n**Database ID:** {{ $('Save to Database').item.json.id }}\n**Processed:** {{ $('Parse AI Response').item.json.processed_at }}",
+        "options": {}
+      },
+      "id": "log-notification",
+      "name": "Log High Priority",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1450, 180]
+    }
+  ],
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Extract Email Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Email Data": {
+      "main": [
+        [
+          {
+            "node": "AI Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classification": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Send Email Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email Summary": {
+      "main": [
+        [
+          {
+            "node": "High Priority?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority?": {
+      "main": [
+        [
+          {
+            "node": "Log High Priority",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-15T00:00:00.000Z",
+  "versionId": "1"
+}

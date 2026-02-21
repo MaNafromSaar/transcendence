@@ -1,0 +1,29 @@
+# Ignore sensitive files
+.env
+nginx/.htpasswd
+
+# Ignore TLS certs (generated locally)
+nginx/certs/
+traefik/acme.json
+
+# Ignore Docker volume data
+**/db_data/
+**/n8n_data/
+**/ollama_models/
+**/tgi_cache/
+**/open_webui_data/
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore node_modules
+node_modules/
+
+# Ignore binary / large files
+*.pdf
+models/*.gguf

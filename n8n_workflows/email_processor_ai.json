@@ -1,0 +1,144 @@
+{
+  "name": "Email Processor with AI Categorization",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "process-email",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Email Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "email-processor"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://llama_wrapper:8080/generate",
+        "authentication": "none",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "prompt",
+              "value": "=You are an email classification AI. Analyze the following email and extract structured information.\n\nEmail Content:\n---\n{{ $json.body.email_content }}\n---\n\nExtract and return ONLY valid JSON with these fields:\n{\n  \"sender_name\": \"extracted name or 'Unknown'\",\n  \"email_type\": \"one of: info, order, request, invoice, support_request, other\",\n  \"topic\": \"brief topic summary\",\n  \"summary\": \"2-3 sentence summary\",\n  \"date_deadline\": \"extracted date/deadline or null\",\n  \"cost_amount\": \"extracted cost or null\",\n  \"phone_number\": \"extracted phone or null\",\n  \"priority\": \"low, medium, or high\",\n  \"action_required\": \"yes or no\",\n  \"additional_info\": \"any other important details\"\n}\n\nReturn ONLY the JSON object, no other text."
+            },
+            {
+              "name": "max_tokens",
+              "value": "400"
+            },
+            {
+              "name": "model",
+              "value": "mistral:7b-instruct-q4_0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ai-classify",
+      "name": "AI Classification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse AI response and clean up JSON\nconst aiResponse = $input.item.json.generated_text;\n\n// Try to extract JSON from response\nlet extractedData;\ntry {\n  // Remove markdown code blocks if present\n  let cleanJson = aiResponse.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  \n  // Try to find JSON object in the response\n  const jsonMatch = cleanJson.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    cleanJson = jsonMatch[0];\n  }\n  \n  extractedData = JSON.parse(cleanJson);\n} catch (error) {\n  // Fallback if JSON parsing fails\n  extractedData = {\n    sender_name: \"Unknown\",\n    email_type: \"other\",\n    topic: \"Parse Error\",\n    summary: aiResponse.substring(0, 200),\n    date_deadline: null,\n    cost_amount: null,\n    phone_number: null,\n    priority: \"medium\",\n    action_required: \"no\",\n    additional_info: \"AI response could not be parsed as JSON\",\n    parse_error: true\n  };\n}\n\n// Add metadata\nconst result = {\n  ...extractedData,\n  original_email: $('Email Webhook').item.json.body.email_content,\n  sender_email: $('Email Webhook').item.json.body.sender_email || null,\n  received_at: new Date().toISOString(),\n  processed_by: \"mistral-7b\"\n};\n\nreturn { json: result };"
+      },
+      "id": "parse-response",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO email_classifications (\n  sender_name,\n  sender_email,\n  email_type,\n  topic,\n  summary,\n  date_deadline,\n  cost_amount,\n  phone_number,\n  priority,\n  action_required,\n  additional_info,\n  original_email,\n  received_at,\n  processed_by\n) VALUES (\n  '{{ $json.sender_name }}',\n  '{{ $json.sender_email }}',\n  '{{ $json.email_type }}',\n  '{{ $json.topic }}',\n  '{{ $json.summary }}',\n  {{ $json.date_deadline ? \"'\" + $json.date_deadline + \"'\" : \"NULL\" }},\n  {{ $json.cost_amount ? \"'\" + $json.cost_amount + \"'\" : \"NULL\" }},\n  {{ $json.phone_number ? \"'\" + $json.phone_number + \"'\" : \"NULL\" }},\n  '{{ $json.priority }}',\n  '{{ $json.action_required }}',\n  '{{ $json.additional_info }}',\n  '{{ $json.original_email }}',\n  '{{ $json.received_at }}',\n  '{{ $json.processed_by }}'\n) RETURNING id;",
+        "options": {}
+      },
+      "id": "insert-db",
+      "name": "Save to Database",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [850, 300],
+      "credentials": {
+        "postgres": {
+          "id": "1",
+          "name": "PostgreSQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  \"status\": \"success\",\n  \"message\": \"Email processed and classified\",\n  \"data\": {\n    \"id\": $('Save to Database').item.json.id,\n    \"sender_name\": $('Parse AI Response').item.json.sender_name,\n    \"email_type\": $('Parse AI Response').item.json.email_type,\n    \"topic\": $('Parse AI Response').item.json.topic,\n    \"summary\": $('Parse AI Response').item.json.summary,\n    \"priority\": $('Parse AI Response').item.json.priority,\n    \"action_required\": $('Parse AI Response').item.json.action_required\n  }\n} }}"
+      },
+      "id": "respond",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    }
+  ],
+  "connections": {
+    "Email Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Classification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Classification": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Save to Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Database": {
+      "main": [
+        [
+          {
+            "node": "Send Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-11-15T00:00:00.000Z",
+  "versionId": "1"
+}

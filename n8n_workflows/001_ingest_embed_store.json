@@ -1,0 +1,39 @@
+{
+  "name": "Ingest -> Embed -> Store",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ingest"
+      },
+      "name": "HTTP Trigger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://llama_wrapper:8080/health",
+        "options": {}
+      },
+      "name": "Health Check (optional)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://vector_service:8081/insert",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\"doc_title\": $json[\"title\"], \"doc_text\": $json[\"text\"], \"embedding\": $json[\"embedding\"]}"
+      },
+      "name": "Store Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [650, 300]
+    }
+  ],
+  "connections": {}
+}

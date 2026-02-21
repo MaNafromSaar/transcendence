@@ -32,9 +32,10 @@
 | 0.4 | Organize documentation into docs/ | PM | ✅ Done | 8 files moved |
 | 0.5 | Create MASTER_DOCUMENTATION.md | PM | ✅ Done | Team-facing overview |
 | 0.6 | Create PROJECT_TRACKER.md | PM | ✅ Done | This file |
-| 0.7 | Initialize GitHub repository | PM | 🔲 Todo | |
-| 0.8 | Verify docker compose up locally | Team | 🔲 Todo | Full stack smoke test |
-| 0.9 | Team onboarding meeting | PM | 🔲 Todo | Schedule for week 1 |
+| 0.7 | Initialize git repository | PM | ✅ Done | Initial commit a01cc8d (48 files) |
+| 0.8 | Verify docker compose up locally | PM | ✅ Done | All 9 services running, AI inference tested |
+| 0.9 | Push to GitHub remote | PM | 🔲 Todo | Create repo, add remote, push |
+| 0.10 | Team onboarding / kickoff meeting | PM | 🔲 Todo | Schedule for week of Feb 23 |
 
 ### Sprint 1 — Core Stack & Local Validation (Mar 1 – Mar 14, 2026)
 
@@ -75,9 +76,9 @@
 
 | Date | Type | Attendees | Agenda | Minutes |
 |------|------|-----------|--------|---------|
-| TBD (Week 1) | Kickoff | All | Roles, vision, Sprint 1 planning | — |
-| | Weekly Standup | All | Progress, blockers, next steps | — |
-| | Sprint Review | All | Demo completed work, retrospective | — |
+| TBD (Feb 23–27) | **Kickoff** | All | Roles, vision, demo local stack, Sprint 1 planning | — |
+| Weekly (TBD) | Standup | All | Progress, blockers, next steps | — |
+| End of Sprint 1 | Sprint Review | All | Demo completed work, retrospective | — |
 
 ### Meeting Cadence
 - **Daily async standup**: Post in team channel — what you did, what's next, any blockers

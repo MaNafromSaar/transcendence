@@ -106,26 +106,8 @@ services:
       retries: 5
       start_period: 10s
 
-  proxy:
-    image: nginx:latest
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-    depends_on:
-      - n8n
-    networks:
-      - frontend
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request,sys; r=urllib.request.urlopen('http://127.0.0.1:80/'); sys.exit(0 if r.getcode()==200 else 1)\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+  # NOTE: 'proxy' service removed — replaced by 'nginx' service below.
+  # All services bind to 127.0.0.1 directly for local development.
 
   # Text-Generation-Inference (TGI) service for Mistral models
   # NOTE: TGI has hard GPU dependencies (mamba_ssm/triton) that fail on CPU-only hosts.
@@ -202,17 +184,19 @@ services:
       timeout: 5s
       retries: 3
 
-  # Nginx Reverse Proxy with Security
+  # NGINX reverse proxy (optional for local dev — services already bind to localhost)
+  # Start with: docker compose --profile proxy up -d
   nginx:
     image: nginx:alpine
     restart: unless-stopped
+    profiles:
+      - proxy
     ports:
-      - "80:80"
-      - "443:443"
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/certs:/etc/nginx/certs:ro
-      - ./nginx/.htpasswd:/etc/nginx/.htpasswd:ro
       - nginx_logs:/var/log/nginx
     networks:
       - frontend

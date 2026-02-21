@@ -4,7 +4,6 @@ nginx/.htpasswd
 
 # Ignore TLS certs (generated locally)
 nginx/certs/
-traefik/acme.json
 
 # Ignore Docker volume data
 **/db_data/
@@ -24,6 +23,8 @@ __pycache__/
 # Ignore node_modules
 node_modules/
 
-# Ignore binary / large files
+# Ignore binary / large files (AI models, PDFs)
 *.pdf
-models/*.gguf
+*.gguf
+*.bin
+*.safetensors

@@ -40,8 +40,8 @@ Feedback on the project:
 - Project duration: February 2026 – April 2026 (3 months)
 	 
 - Key milestones:
-  - Sprint 0 (Feb 21 – Feb 28): Project setup, documentation, and local validation
-  - Sprint 1 (Mar 1 – Mar 14): Core stack testing and local validation
+  - Sprint 0 (Feb 21): Project setup, documentation, and local validation (already done)
+  - Sprint 1 (Feb 22 – Mar 14): Core stack testing, developing ideas for ERP features, and defining architecture, research
   - Sprint 2 (Mar 15 – Mar 28): ERP foundation and RAG pipeline
   - Sprint 3 (Mar 29 – Apr 11): AI features and UX improvements
 - Final review and presentation: April 15, 2026

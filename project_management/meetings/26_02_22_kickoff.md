@@ -39,7 +39,7 @@
   * Owner: @mnaumann
   * Module: Core
   * Priority: High
-  * Due: 2026-02-28
+  * Due: 2026-03-05
   * Notes: Include contacts, invoices, projects, and sample knowledge-base documents
 
 * [ ] **Set up project tracker & calendar with sprint breakdown**
@@ -50,7 +50,7 @@
   * Notes: Research what GitHub offers for project management (Projects, Issues, Milestones)
 
 * [ ] **Research deployment with/without GPU support & hardware requirements**
-  * Owner: @mnaumann
+  * Owner: @mnaumann @dspringer
   * Module: Infrastructure | AI
   * Priority: Medium
   * Due: 2026-02-28
@@ -91,14 +91,7 @@
   * Due: 2026-02-28
   * Notes: How many modules still needed to fulfill subject? What can be meaningfully integrated?
 
-* [ ] **Check GPU support on AMD / Mac Studio architecture**
-  * Owner: @dspringer
-  * Module: AI | Infrastructure
-  * Priority: Low
-  * Due: 2026-02-28
-  * Notes: Is GPU acceleration meaningful for our target hardware?
-
-* [ ] **Set up n8n workflows (email processor & knowledge-base ingestion)**
+* [ ] **Set up n8n workflows (e.g. email processor & knowledge-base ingestion)**
   * Owner: @silndoj
   * Module: AI | Core
   * Priority: High

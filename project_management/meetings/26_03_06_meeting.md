@@ -53,16 +53,18 @@
 
 ---
 
-## 📌 Parking Lot
+## 📌 Feat Ideas
 
 <!-- Ideas worth keeping but not actionable yet -->
 
-*
-*
+* Mail analyzer and distributor - analyze incoming mails and distribute them to the right people, or even answer them automatically. This could be a great way to save time and improve customer service. It could also be a great way to showcase the power of AI in our product.
+* AI Phone agent. Do simple tasks and a transcript plus summarize always, connect to the right person when needed. (got something ready)
+* Dashboards for the different roles, with the most relevant information and actions for each role. For example, the owner/CEO could have a dashboard with an overview of the business, while the accounting role could have a dashboard with financial information and tasks.
 
 ---
 
 ## 🔗 References
 
 * mistral.ai
-* eleven-labs.com
+* elevenlabs.io
+* n8n.io

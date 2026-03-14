@@ -258,6 +258,56 @@ For issues or questions:
 3. Verify all credentials in .env file
 4. Test with curl before blaming browser
 
+## 🎓 Student Plan
+
+keepITlocal.ai offers a free **Student Plan** for verified students enrolled at eligible institutions.
+
+### What's Included
+- Full access to the ERP stack (CRM, invoicing, project management)
+- Access to AI features (Ollama/Mistral inference, n8n workflows)
+- Community support via Discord
+
+### Eligible Institutions
+The following institutions are currently eligible for the Student Plan:
+
+| Institution | Country |
+|-------------|---------|
+| 42 Heilbronn | Germany |
+| 42 Berlin | Germany |
+| 42 Wolfsburg | Germany |
+| 42 Paris | France |
+| 42 Barcelona | Spain |
+
+### How to Get Access (42 Heilbronn & Other Eligible Schools)
+
+1. **Verify your enrollment**: Obtain proof of enrollment from your institution (e.g., student ID, enrollment certificate, or a confirmation email from your school).
+2. **Register your company/account**: Set up an account in the system using your institutional email address (e.g., `yourname@student.42heilbronn.de`).
+3. **Select the Student Plan**: When creating your company profile, choose **"Student"** from the subscription plan dropdown.
+4. **Institution confirmation**: Enter your institution name (e.g., `42 Heilbronn`) in the institution field. The system will verify that your institution is on the eligible list.
+5. **Activate**: Once submitted, your Student Plan access is activated immediately for institutions on the approved list.
+
+### Database Reference
+The subscription plans and eligible institutions are managed in the `subscription_plans` and `eligible_institutions` tables. An administrator can query current eligible institutions with:
+
+```sql
+SELECT ei.name, ei.country, sp.name AS plan
+FROM eligible_institutions ei
+JOIN subscription_plans sp ON sp.id = ei.plan_id
+WHERE sp.is_student_plan = TRUE
+ORDER BY ei.country, ei.name;
+```
+
+To add a new eligible institution:
+```sql
+INSERT INTO eligible_institutions (name, country, plan_id)
+SELECT '42 NewCampus', 'Germany', id
+FROM subscription_plans
+WHERE is_student_plan = TRUE
+LIMIT 1;
+```
+
+---
+
 ## 🎯 Next Steps
 
 ### Tomorrow: Metabase Dashboards

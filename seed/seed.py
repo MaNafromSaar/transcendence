@@ -14,10 +14,50 @@ conn = psycopg2.connect(
 
 cur = conn.cursor()
 
-def create_company():
+def create_subscription_plans():
+    plans = [
+        ("Free", "Basic free tier for individuals", 0.00, False),
+        ("Starter", "Small business starter plan", 29.00, False),
+        ("Professional", "Full-featured plan for growing businesses", 79.00, False),
+        ("Student", "Free plan for verified students at eligible institutions", 0.00, True),
+    ]
+    plan_ids = {}
+    for name, description, price, is_student in plans:
+        cur.execute(
+            """
+            INSERT INTO subscription_plans (name, description, price_monthly, is_student_plan)
+            VALUES (%s, %s, %s, %s) RETURNING id
+            """,
+            (name, description, price, is_student)
+        )
+        plan_ids[name] = cur.fetchone()[0]
+    return plan_ids
+
+def create_eligible_institutions(plan_ids):
+    student_plan_id = plan_ids["Student"]
+    institutions = [
+        ("42 Heilbronn", "Germany", student_plan_id),
+        ("42 Berlin", "Germany", student_plan_id),
+        ("42 Wolfsburg", "Germany", student_plan_id),
+        ("42 Paris", "France", student_plan_id),
+        ("42 Barcelona", "Spain", student_plan_id),
+    ]
+    institution_ids = {}
+    for name, country, plan_id in institutions:
+        cur.execute(
+            """
+            INSERT INTO eligible_institutions (name, country, plan_id)
+            VALUES (%s, %s, %s) RETURNING id
+            """,
+            (name, country, plan_id)
+        )
+        institution_ids[name] = cur.fetchone()[0]
+    return institution_ids
+
+def create_company(plan_ids):
     cur.execute(
-        "INSERT INTO companies (name, industry, country) VALUES (%s,%s,%s) RETURNING id",
-        ("keepITlocal.ai", "AI Automation Agency", "Germany")
+        "INSERT INTO companies (name, industry, country, plan_id) VALUES (%s,%s,%s,%s) RETURNING id",
+        ("keepITlocal.ai", "AI Automation Agency", "Germany", plan_ids["Professional"])
     )
     return cur.fetchone()[0]
 
@@ -131,7 +171,9 @@ def create_tickets():
             )
         )
 
-company_id=create_company()
+plan_ids = create_subscription_plans()
+create_eligible_institutions(plan_ids)
+company_id = create_company(plan_ids)
 create_users(company_id)
 create_clients()
 create_vendors()
